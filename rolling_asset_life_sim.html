@@ -1,0 +1,1692 @@
+<!--
+rolling_asset_life_sim.html
+Copyright (c) 2026 高山雅夫
+All rights reserved.
+
+作成日：2026/10/12
+作成者：高山雅夫
+
+
+本シミュレータのコード、計算ロジック、データ加工方法、画面構成などの著作権は
+高山雅夫に帰属します。個人利用の範囲を除き、無断で複製・改変・再配布・商用利用
+することを禁止します。
+
+本シミュレータは教育目的・資産計画の参考として提供するものであり、
+投資助言を行うものではありません。本ツールの利用により生じたいかなる損害・不利益
+についても、作成者は一切の責任を負いません。
+
+本シミュレータで使用する実績データは、以下の公開情報を参考にしつつ、
+独自に加工したものです。加工内容の正確性を完全に保証するものではなく、
+データ更新義務も負いません。
+
+参考サイト:
+  https://www.macrotrends.net/
+  https://shillerdata.com/
+  https://jp.investing.com/
+
+税制・手数料・金融商品の仕様は簡略化しており、実際の制度とは異なる場合があります。
+設定利回り・為替変動率・インフレ率などの前提はユーザー入力に依存します。
+
+本シミュレータは網羅的検証が未完了であり、改善予定は未定です。
+挙動に気になる点があればお知らせください。
+--> 
+
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>資産ライフプランシミュレータ</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background: #f4f6f9; color: #333; }
+        h1, h2, h3 { color: #2c3e50; }
+        .container { max-width: 1200px; margin: auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .section { margin-bottom: 25px; padding: 15px; border: 1px solid #e1e4e8; border-radius: 6px; background: #fafbfc; }
+        .intro-section { margin: 20px 0 25px; padding: 20px; border: 1px solid #d6e2ed; border-radius: 6px; background: #f7fafc; line-height: 1.7; }
+        .intro-section h2 { margin: 20px 0 8px; font-size: 18px; }
+        .intro-section h2:first-child { margin-top: 0; }
+        .intro-section .intro-main-heading { color: #2878b8; font-size: 21px; }
+        .intro-section p { margin: 8px 0; }
+        .intro-section ul { margin: 8px 0; padding-left: 24px; }
+        .intro-notice { color: #555; font-size: 13px; }
+        .spec-details { margin-top: 18px; border-top: 1px solid #d6e2ed; padding-top: 14px; }
+        .spec-details summary { color: #2878b8; font-size: 18px; font-weight: bold; cursor: pointer; }
+        .spec-details summary:focus-visible { outline: 2px solid #2878b8; outline-offset: 3px; }
+        .spec-details h3 { margin: 18px 0 6px; font-size: 16px; }
+        .spec-details ul { margin-top: 6px; }
+        .field-row {
+            display: flex;
+            align-items: center;
+            margin: 8px 0 8px 18px;
+            gap: 12px;
+        }
+        .field-row label {
+            display: inline-block;
+            width: 200px;
+            font-weight: bold;
+            font-size: 14px;
+            text-align: left;
+        }
+        .field-row input,
+        .field-row select {
+            margin: 0;
+        }
+        input, select { padding: 6px; margin: 4px 0; width: 150px; }
+        button { padding: 8px 16px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        button:hover { background: #2980b9; }
+        .sub-btn { background: #e74c3c; padding: 4px 8px; font-size: 12px; margin-left: 5px; }
+        .sub-btn:hover { background: #c0392b; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; table-layout: fixed; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+        th { background: #2c3e50; color: white; }
+        td:nth-child(1), td:nth-child(2) { text-align: center; }
+        .result-table-wrap {
+            max-height: 540px;
+            overflow: auto;
+            position: relative;
+        }
+        .result-table-wrap thead tr:first-child th {
+            position: sticky;
+            top: 0;
+            z-index: 4;
+            background: #2c3e50;
+        }
+        .result-table-wrap thead tr:nth-child(2) th {
+            position: sticky;
+            top: 40px;
+            z-index: 3;
+            background: #2c3e50;
+        }
+        .dynamic-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 8px 0 8px 18px;
+            flex-wrap: wrap;
+        }
+        .dynamic-row label {
+            width: auto;
+            min-width: 90px;
+            font-weight: normal;
+            text-align: left;
+        }
+        .dynamic-row input {
+            width: 120px;
+        }
+        .help-button {
+            flex: 0 0 auto;
+            width: 22px;
+            height: 22px;
+            padding: 0;
+            margin: 0 0 0 -6px;
+            border-radius: 50%;
+            background: #95a5a6;
+            color: white;
+            font-weight: bold;
+            line-height: 22px;
+            text-align: center;
+        }
+        .help-button:hover,
+        .help-button:focus-visible {
+            background: #5d6d6e;
+        }
+        .help-bubble {
+            position: fixed;
+            z-index: 20;
+            max-width: 320px;
+            padding: 12px 14px;
+            border: 1px solid #b8c4ce;
+            border-radius: 6px;
+            background: #fff;
+            color: #2c3e50;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+            font-size: 13px;
+            line-height: 1.5;
+            text-align: left;
+        }
+        .help-bubble::before {
+            content: '';
+            position: absolute;
+            top: -7px;
+            left: 18px;
+            width: 12px;
+            height: 12px;
+            border-top: 1px solid #b8c4ce;
+            border-left: 1px solid #b8c4ce;
+            background: #fff;
+            transform: rotate(45deg);
+        }
+        #assetInputTable { min-width: 1200px; margin-top: 0; }
+        #assetInputTable th, #assetInputTable td { text-align: center; }
+        #assetInputTable input[type="number"], #assetInputTable input[type="text"], #assetInputTable select { width: 120px; box-sizing: border-box; }
+        #assetInputTable input[type="checkbox"] { width: auto; }
+        #rollingWindowSelect { width: min(480px, 100%); }
+        #successRate { color: #c0392b; font-weight: bold; font-size: calc(1em + 2pt); }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>資産ライフプランシミュレータ</h1>
+
+    <section class="intro-section" aria-label="シミュレータの説明">
+        <h2 class="intro-main-heading">過去の市場データで、資産寿命をシミュレーション</h2>
+        <p>退職後の資産がどれくらい持つかは、運用成績だけでなく、<strong>引退した時期やその後の相場の動き</strong>にも左右されます。</p>
+
+        <h2>トリニティ・スタディに通じる「複数の開始時点で検証する」考え方</h2>
+        <p>本シミュレータは、4%ルールで知られるトリニティ・スタディと同様に、<strong>過去の市場データを使い、複数の開始時点から資産の持続性を検証する手法</strong>を取り入れています。</p>
+
+        <h2>独自の20年ローリング方式</h2>
+        <p>過去データの開始時期をずらし、<strong>さまざまな相場の並びで資産推移を試算</strong>します。</p>
+
+        <h2 class="intro-main-heading">4資産の実績系列を選んでシミュレーション</h2>
+        <p>運用モデルとして、以下の4資産の実績系列を選べます。</p>
+        <ul>
+            <li><strong>S&amp;P 500</strong></li>
+            <li><strong>米国債券</strong></li>
+            <li><strong>日経平均（配当込み）</strong></li>
+            <li><strong>ゴールド</strong></li>
+        </ul>
+        <p>設定した資産配分で、<strong>実績データに連動した運用結果</strong>を試算できます。</p>
+
+        <h2 class="intro-main-heading">収入・支出や運用条件を反映</h2>
+        <ul>
+            <li>毎年のリバランス</li>
+            <li>収入・支出の反映</li>
+            <li>為替変動の反映設定</li>
+            <li>税金の近似計算</li>
+            <li>実績データによる20年間の運用後は、設定利回りに切り替えて推移を追跡</li>
+        </ul>
+
+        <h2 class="intro-main-heading">成功率を表示</h2>
+        <p>複数シナリオのうち、<strong>シミュレーション終了年齢まで資産が枯渇しなかった割合を「成功率」</strong>として表示します。</p>
+
+        <h2 class="intro-main-heading">注意事項</h2>
+        <p class="intro-notice">本シミュレータはトリニティ・スタディそのものを再現するものではなく、過去データに基づく独自の試算です。将来の運用成果を保証するものではありません。現時点ではすべてのケースを網羅的に検証できていません。挙動に気になる点があればお知らせください。</p>
+
+        <h3>著作権・免責に関する注意</h3>
+        <p class="intro-notice">本シミュレータのコード、仕様書、計算ロジック、画面構成、データ加工方法などの著作権は <strong>高山雅夫</strong> に帰属します。<br>
+        個人利用の範囲を除き、無断で複製・改変・再配布・商用利用することを禁止します。</p>
+        <p class="intro-notice">本シミュレータは教育目的・資産計画の参考として提供するものであり、投資助言を行うものではありません。<br>
+        本ツールの利用により生じたいかなる損害・不利益についても、作成者は一切の責任を負いません。</p>
+        <p class="intro-notice">税制・手数料・金融商品の仕様は簡略化しており、実際の制度とは異なる場合があります。<br>
+        設定利回り・為替変動率・インフレ率などの前提はユーザー入力に依存します。</p>
+        <p class="intro-notice">本シミュレータは網羅的検証が未完了であり、改善予定は未定です。</p>
+
+        <details class="spec-details">
+            <summary>本シミュレータの主な仕様等</summary>
+            <h3>1. リバランスの仕様</h3>
+            <ul>
+                <li>毎年の運用後、入力した初期資産配分を目標配分としてリバランスします。</li>
+                <li>売却額には設定した税率を近似適用します。</li>
+                <li>税相当分は再投資されないため、税引き後の配分が完全一致しない場合があります。</li>
+                <li>リバランスは資産配分維持のための調整であり、利益確定を目的としたものではありません。</li>
+            </ul>
+
+            <h3>2. 過去実績の適用期間</h3>
+            <ul>
+                <li>実績リターンを適用するのは最初の20年間です。</li>
+                <li>20年経過後は設定利回りに切り替え、終了年齢まで推移を計算します。</li>
+                <li>実績データに値がない場合は、設定利回りで補完します。</li>
+            </ul>
+
+            <h3>3. ローリング方式の仕様</h3>
+            <ul>
+                <li>1973〜2025年の53年分のデータから、20年区間の開始年を1年ずつずらして34通りのシナリオを生成します。</li>
+                <li>各シナリオで実績リターンを適用するのは最初の20年間のみです。その後は設定利回りで終了年齢まで計算します。</li>
+                <li>トリニティ・スタディと同様に、複数の開始時点で資産寿命を検証する考え方を採用しています。</li>
+            </ul>
+
+            <h3>4. 4資産の実績データについて</h3>
+            <ul>
+                <li>使用する年次リターン系列は、S&amp;P 500、米国債券、日経平均（配当込み）、ゴールドの4資産です。</li>
+                <li>各資産は該当年のリターンに基づいて変動します。</li>
+                <li>日経平均（配当込み）は、価格指数に配当利回り1.5%を加算して近似しています。</li>
+                <li>実績データの年次ラベルは1973〜2025年です（元データは1972年から）。</li>
+            </ul>
+            <p>実績データは以下の公開情報を参考にしつつ、独自に加工したものです。<br>
+            加工内容の正確性を完全に保証するものではなく、データ更新義務も負いません。</p>
+            <ul>
+                <li><a href="https://www.macrotrends.net/">https://www.macrotrends.net/</a></li>
+                <li><a href="https://shillerdata.com/">https://shillerdata.com/</a></li>
+                <li><a href="https://jp.investing.com/">https://jp.investing.com/</a></li>
+            </ul>
+
+            <h3>5. 為替の扱い</h3>
+            <ul>
+                <li>為替反映がONの資産には、ユーザーが設定した年間為替変動率を複利で反映します。</li>
+                <li>為替の過去実績データは使用しません。為替は長期的なトレンドが安定せず、過去の値動きが将来の参考になりにくいため、ユーザーが将来の為替見通しを設定する方式です。</li>
+                <li>初期設定ではS&amp;P 500・米国債券・ゴールドがON、日経平均・理想リターンはOFFです。為替反映は資産ごとに変更できます。</li>
+            </ul>
+
+            <h3>6. 収入・支出の扱い</h3>
+            <ul>
+                <li>各年の運用後に、その年の収入・支出を資産に反映します。</li>
+                <li>定期支出・臨時支出にはインフレ率を反映します。</li>
+                <li>現在価値で入力した年金額は、シミュレーション開始時点からの経過年数に応じて、インフレ率の1/2を用いて推移を計算します。</li>
+                <li>赤字の場合は資産を取り崩し、近似税率を適用します。</li>
+            </ul>
+
+            <h3>7. 成功率の定義</h3>
+            <ul>
+                <li>34通りのローリングシナリオのうち、終了年齢まで資産が枯渇しなかった割合を成功率として表示します。</li>
+                <li>成功率は、将来の運用成果を保証するものではありません。</li>
+            </ul>
+
+            <h3>8. シミュレーションの前提</h3>
+            <ul>
+                <li>実質資産は名目資産をインフレ率で割り引いて表示します。</li>
+                <li>税率は簡易近似であり、実際の課税とは異なる場合があります。</li>
+                <li>過去の実績は将来の運用成果を保証しません。</li>
+            </ul>
+        </details>
+    </section>
+
+    <div class="section">
+        <h2>基本情報</h2>
+        <div class="field-row"><label>本人の現在の年齢:</label><input type="number" id="currentAge" value="45"></div>
+        <div class="field-row"><label>シミュレーション終了年齢:</label><input type="number" id="endAge" value="100"></div>
+        <div class="field-row"><label>インフレ率（名目）(%):</label><input type="number" id="inflationRate" value="1.5" step="0.1"></div>
+        
+        <h3>家族構成</h3>
+        <div class="field-row"><label>配偶者がいますか？</label><input type="checkbox" id="hasWife" style="width:auto;" onchange="toggleWifeSection()"></div>
+        
+        <div id="wifeAgeSection" style="display:none;">
+            <div class="field-row"><label>配偶者の現在の年齢:</label><input type="number" id="wifeAge" value="42"></div>
+        </div>
+        
+        <div class="field-row">
+            <label>子供の人数:</label>
+            <select id="childrenCount" onchange="updateChildrenRows()">
+                <option value="0">0人</option>
+                <option value="1">1人</option>
+                <option value="2">2人</option>
+                <option value="3">3人</option>
+            </select>
+        </div>
+        <div id="childrenAgesSection"></div>
+    </div>
+
+    <div class="section">
+        <h2>収入</h2>
+        <h3>本人の定期収入</h3>
+        <div id="incomeRows"></div>
+        <button type="button" onclick="addIncomeRow()">+ 収入期間を追加</button>
+        <br><br>
+        <div class="field-row"><label>年金額（現在価値、万円/年）:</label><input type="number" id="pensionAmount" value="200"></div>
+        <div class="field-row"><label>実際の年金受給年齢:</label><input type="number" id="pensionAge" value="65"></div>
+        <div class="field-row"><label></label><span style="font-size: 12px; color: #666;">（年金額は現在価値で入力。標準受給年齢65歳に対し、繰り上げ受給は-0.4%/月、繰り下げ受給は+0.7%/月）</span></div>
+
+        <div id="wifeIncomeSection" style="display:none;">
+            <h3>配偶者の定期収入</h3>
+            <div id="wifeIncomeRows"></div>
+            <button type="button" onclick="addWifeIncomeRow()">+ 配偶者の収入期間を追加</button>
+            <br><br>
+            <div class="field-row"><label>年金額（現在価値、万円/年）:</label><input type="number" id="wifePensionAmount" value="80"></div>
+            <div class="field-row"><label>実際の年金受給年齢:</label><input type="number" id="wifePensionAge" value="65"></div>
+            <div class="field-row"><label></label><span style="font-size: 12px; color: #666;">（年金額は現在価値で入力。標準受給年齢65歳に対し、繰り上げ受給は-0.4%/月、繰り下げ受給は+0.7%/月）</span></div>
+        </div>
+
+        <h3>臨時収入</h3>
+        <div id="temporaryIncomeRows"></div>
+        <button type="button" onclick="addTemporaryIncomeRow()">+ 臨時収入を追加</button>
+    </div>
+
+    <div class="section">
+        <h2>支出</h2>
+        <h3>本人の定期支出</h3>
+        <div id="expenseRows"></div>
+        <button type="button" onclick="addExpenseRow()">+ 支出期間を追加</button>
+
+        <h3>臨時支出</h3>
+        <div id="temporaryExpenseRows"></div>
+        <button type="button" onclick="addTemporaryExpenseRow()">+ 臨時支出を追加</button>
+    </div>
+
+    <div class="section">
+        <h2>資産と運用リターン</h2>
+        <div class="field-row"><label for="investmentTaxRate">取り崩し時の近似税率（％）:</label><input type="number" id="investmentTaxRate" value="10" min="0" max="99" step="0.1"></div>
+        <div class="field-row"><label for="annualFxChange">年間為替変動率（円安＋／円高−、％）:</label><input type="number" id="annualFxChange" value="0" step="0.1" oninput="updateFxProjection()"><button type="button" class="help-button" data-help-text="為替反映がONの資産に適用する、為替の年間変動率です。資産リターンを適用した後に複利で反映し、各年の資産額の計算に使います。" aria-label="為替変動率のヘルプ">?</button><span>10年後: <strong id="fxProjection10">0.0%</strong> / 20年後: <strong id="fxProjection20">0.0%</strong></span></div>
+        <div class="result-table-wrap">
+            <table id="assetInputTable">
+                <thead><tr>
+                    <th>資産クラス<button type="button" class="help-button" data-help-text="資産クラスまたは資産名です。資産の内訳を識別し、各資産を運用対象として扱うために使います。" aria-label="資産名のヘルプ">?</button></th>
+                    <th>資産額（万円）<button type="button" class="help-button" data-help-text="各資産クラスまたは資産の現在の金額です。初期資産の合計、資産配分、運用結果の計算に使います。" aria-label="資産額のヘルプ">?</button></th>
+                    <th>設定利回り（％）<button type="button" class="help-button" data-help-text="理想リターンを選んだ資産、または実績モデル開始から20年経過後に適用する年間利回りです。対象期間の資産運用リターンの計算に使います。既定の参考値は外国株式8%、国内株式4%、外国債券3.5%、国内債券1.5%、ゴールド1.5%、現金・その他0.1%です。" aria-label="設定利回りのヘルプ">?</button></th>
+                    <th>運用モデル<button type="button" class="help-button" data-help-text="SP500、米国債券、日経平均（配当込み）、ゴールドの実績系列、または理想リターンを選びます。選択した系列を最初の20年間に使い、その後は設定利回りに切り替えて運用リターンを計算します。" aria-label="運用モデルのヘルプ">?</button></th>
+                    <th>為替<button type="button" class="help-button" data-help-text="ONの場合、その資産に年間為替変動率を資産リターン適用後の変動として毎年反映します。初期推奨値はSP500・米国債券・ゴールドがON、日経平均・理想リターンがOFFです。" aria-label="為替反映のヘルプ">?</button></th>
+                    <th>利回りオフセット（％）<button type="button" class="help-button" data-help-text="利回りに加算する値です。実績リターンまたは理想リターンの調整に使います。実績モデル開始から20年経過後に適用する設定利回りには適用しません。" aria-label="利回りオフセットのヘルプ">?</button></th>
+                    <th>利回りスケール<button type="button" class="help-button" data-help-text="オフセット適用後の利回りに掛ける倍率です。実績リターンまたは理想リターンの調整に使います。実績モデル開始から20年経過後に適用する設定利回りには適用しません。" aria-label="利回りスケールのヘルプ">?</button></th>
+                    <th>操作</th>
+                </tr></thead>
+                <tbody>
+                    <tr data-asset-key="foreign-equity"><td>外国株式</td><td><input type="number" id="ast_for_eq" value="1000" min="0" step="any"></td><td><input type="number" id="ret_for_eq" value="8.0" step="0.1"></td><td><select id="model_for_eq" onchange="syncFxDefault(this)"><option selected>SP500</option><option>米国債券</option><option>日経平均</option><option>ゴールド</option><option>理想リターン</option></select></td><td><input type="checkbox" class="asset-fx" id="fx_for_eq" checked aria-label="外国株式の為替反映"></td><td><input type="number" id="offset_for_eq" value="0" step="0.1"></td><td><input type="number" id="scale_for_eq" value="1" min="0" step="0.01"></td><td><button type="button" class="sub-btn" onclick="removeAssetRow(this)">削除</button></td></tr>
+                    <tr data-asset-key="domestic-equity"><td>国内株式</td><td><input type="number" id="ast_dom_eq" value="1000" min="0" step="any"></td><td><input type="number" id="ret_dom_eq" value="4.0" step="0.1"></td><td><select id="model_dom_eq" onchange="syncFxDefault(this)"><option>SP500</option><option>米国債券</option><option selected>日経平均</option><option>ゴールド</option><option>理想リターン</option></select></td><td><input type="checkbox" class="asset-fx" id="fx_dom_eq" aria-label="国内株式の為替反映"></td><td><input type="number" id="offset_dom_eq" value="0" step="0.1"></td><td><input type="number" id="scale_dom_eq" value="1" min="0" step="0.01"></td><td><button type="button" class="sub-btn" onclick="removeAssetRow(this)">削除</button></td></tr>
+                    <tr data-asset-key="foreign-bond"><td>外国債券</td><td><input type="number" id="ast_for_bd" value="1000" min="0" step="any"></td><td><input type="number" id="ret_for_bd" value="3.5" step="0.1"></td><td><select id="model_for_bd" onchange="syncFxDefault(this)"><option>SP500</option><option selected>米国債券</option><option>日経平均</option><option>ゴールド</option><option>理想リターン</option></select></td><td><input type="checkbox" class="asset-fx" id="fx_for_bd" checked aria-label="外国債券の為替反映"></td><td><input type="number" id="offset_for_bd" value="0" step="0.1"></td><td><input type="number" id="scale_for_bd" value="1" min="0" step="0.01"></td><td><button type="button" class="sub-btn" onclick="removeAssetRow(this)">削除</button></td></tr>
+                    <tr data-asset-key="domestic-bond"><td>国内債券</td><td><input type="number" id="ast_dom_bd" value="1000" min="0" step="any"></td><td><input type="number" id="ret_dom_bd" value="1.5" step="0.1"></td><td><select id="model_dom_bd" onchange="syncFxDefault(this)"><option>SP500</option><option>米国債券</option><option>日経平均</option><option>ゴールド</option><option selected>理想リターン</option></select></td><td><input type="checkbox" class="asset-fx" id="fx_dom_bd" aria-label="国内債券の為替反映"></td><td><input type="number" id="offset_dom_bd" value="0" step="0.1"></td><td><input type="number" id="scale_dom_bd" value="1" min="0" step="0.01"></td><td><button type="button" class="sub-btn" onclick="removeAssetRow(this)">削除</button></td></tr>
+                    <tr data-asset-key="gold"><td>ゴールド</td><td><input type="number" id="ast_gold" value="1000" min="0" step="any"></td><td><input type="number" id="ret_gold" value="1.5" step="0.1"></td><td><select id="model_gold" onchange="syncFxDefault(this)"><option>SP500</option><option>米国債券</option><option>日経平均</option><option selected>ゴールド</option><option>理想リターン</option></select></td><td><input type="checkbox" class="asset-fx" id="fx_gold" checked aria-label="ゴールドの為替反映"></td><td><input type="number" id="offset_gold" value="0" step="0.1"></td><td><input type="number" id="scale_gold" value="1" min="0" step="0.01"></td><td><button type="button" class="sub-btn" onclick="removeAssetRow(this)">削除</button></td></tr>
+                    <tr data-asset-key="cash"><td>現金</td><td><input type="number" id="ast_cash" value="2000" min="0" step="any"></td><td><input type="number" id="ret_cash" value="0.1" step="0.1"></td><td><select id="model_cash" onchange="syncFxDefault(this)"><option>SP500</option><option>米国債券</option><option>日経平均</option><option>ゴールド</option><option selected>理想リターン</option></select></td><td><input type="checkbox" class="asset-fx" id="fx_cash" aria-label="現金の為替反映"></td><td><input type="number" id="offset_cash" value="0" step="0.1"></td><td><input type="number" id="scale_cash" value="1" min="0" step="0.01"></td><td><button type="button" class="sub-btn" onclick="removeAssetRow(this)">削除</button></td></tr>
+                </tbody>
+                <tbody id="otherAssetRows"></tbody>
+            </table>
+        </div>
+        <button type="button" onclick="addOtherAssetRow()" style="margin-top:10px;">+ その他資産を追加</button>
+        <div style="margin-top: 12px;">
+            <button type="button" onclick="calculateAssetSummary()">資産合計・平均リターンを計算</button>
+            <span id="assetSummary" style="margin-left: 10px;" aria-live="polite"></span>
+        </div>
+    </div>
+
+    <button onclick="runSimulation()" style="font-size: 16px; padding: 12px 24px; background: #27ae60;">シミュレーション実行</button>
+    <button type="button" onclick="exportSimulationParameters()" style="margin-left: 10px;">入力パラメータをテキスト保存</button>
+    <button type="button" onclick="document.getElementById('parameterFileInput').click()" style="margin-left: 6px;">テキストファイルから読込</button>
+    <input type="file" id="parameterFileInput" accept=".txt,.json,text/plain,application/json" style="display:none;" onchange="loadSimulationParametersFromFile(event)">
+    <span id="parameterSaveStatus" style="margin-left: 10px; color: #2c3e50;"></span>
+
+    <div class="section" style="margin-top:30px;">
+    <h2>成功率 <button type="button" class="help-button" data-help-text="過去の実績データを20年ずつずらした複数のシナリオのうち、シミュレーション終了年齢まで資産が枯渇しない割合です。運用条件ごとの資産枯渇リスクを比較するために使います。20年経過後は設定利回りを使って計算します。" aria-label="成功率のヘルプ">?</button></h2>
+        <p id="successRate" aria-live="polite">シミュレーションを実行してください</p>
+        <h2>資産推移</h2>
+        <label for="rollingWindowSelect">表示するローリング窓（複数選択可。設定リターンを選ぶと単独表示）:</label><br>
+        <select id="rollingWindowSelect" multiple size="8" onchange="renderSelectedWindow(event)">
+            <option value="best" selected disabled>最良</option>
+            <option value="worst" selected disabled>最悪</option>
+            <option value="median" selected disabled>中央値</option>
+        </select>
+        <h3>名目資産</h3>
+        <canvas id="nominalAssetChart" width="400" height="150"></canvas>
+        <h3>実質資産</h3>
+        <canvas id="realAssetChart" width="400" height="150"></canvas>
+    </div>
+
+    <div class="section">
+        <h2>年間収支グラフ</h2>
+        <canvas id="cashFlowChart" width="400" height="150"></canvas>
+    </div>
+
+    <div class="section">
+        <h2>選択結果のテーブル</h2>
+        <div class="result-table-wrap">
+            <table id="resultTable">
+                <thead id="resultTableHead">
+                </thead>
+                <tbody id="resultTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+let myChart = null;
+let cashFlowChart = null;
+let nominalAssetChart = null;
+let realAssetChart = null;
+let simulationResults = [];
+let settingReturnResult = null;
+let windowOutcomes = null;
+let selectedRollingWindowNumbers = new Set();
+let activeRollingNo = null;
+let showingSettingReturn = false;
+
+// ローリング方式のリターン実績。
+// 20年目以降は UI の平均リターンへ切り替える。
+// ここでは実績データを年次の名目リターンとして扱い、
+// 2026_リターン過去実績_rateのみ.xlsx に対応する想定の配列を置いている。
+// 管理者が returns_data.csv を更新するときは、この埋め込みCSVを置き換える。
+const RETURNS_DATA_CSV = `,SP500,米国債券,ゴールド,日経平均（配当込み）
+1973.12,-16%,5.97%,73.49%,-15.8%
+1974.12,-25%,10.24%,67.04%,-9.4%
+1975.12,38%,7.67%,-25.20%,14.7%
+1976.12,23%,-14.13%,-4.06%,16.4%
+1977.12,-6%,11.94%,23.08%,-1.0%
+1978.12,8%,17.17%,35.57%,24.9%
+1979.12,18%,15.32%,133.41%,11.0%
+1980.12,30%,23.58%,12.50%,9.0%
+1981.12,-2%,6.85%,-32.15%,10.3%
+1982.12,18%,-23.18%,12.00%,5.9%
+1983.12,23%,12.24%,-14.84%,24.9%
+1984.12,5%,-2.79%,-19.00%,18.2%
+1985.12,31%,-19.48%,5.83%,14.8%
+1986.12,24%,-23.22%,19.54%,45.4%
+1987.12,0%,26.44%,24.46%,16.1%
+1988.12,19%,1.33%,-15.69%,41.4%
+1989.12,30%,-13.94%,-2.23%,30.5%
+1990.12,-2%,3.06%,-2.49%,-37.2%
+1991.12,22%,-12.25%,-9.62%,-2.1%
+1992.12,15%,-4.51%,-5.80%,-24.9%
+1993.12,10%,-14.77%,17.35%,4.4%
+1994.12,1%,35.36%,-2.09%,14.7%
+1995.12,38%,-26.89%,1.10%,2.2%
+1996.12,23%,10.33%,-4.43%,-1.1%
+1997.12,32%,-7.78%,-21.74%,-19.7%
+1998.12,25%,-19.97%,-0.61%,-7.8%
+1999.12,21%,35.05%,1.18%,38.3%
+2000.12,-6%,-16.56%,-6.26%,-25.7%
+2001.12,-13%,-2.86%,1.41%,-22.0%
+2002.12,-20%,-20.83%,23.96%,-17.1%
+2003.12,22%,5.96%,21.74%,26.0%
+2004.12,13%,-0.94%,4.97%,9.1%
+2005.12,7%,5.67%,17.12%,41.7%
+2006.12,14%,2.01%,23.92%,8.4%
+2007.12,6%,-10.09%,31.59%,-9.6%
+2008.12,-39%,-40.98%,3.41%,-40.6%
+2009.12,29%,48.35%,27.63%,20.5%
+2010.12,14%,-8.36%,27.74%,-1.5%
+2011.12,2%,-39.82%,11.65%,-15.8%
+2012.12,17%,-13.13%,5.68%,24.4%
+2013.12,30%,68.60%,-27.79%,58.2%
+2014.12,16%,-23.79%,-0.19%,8.6%
+2015.12,2%,1.36%,-11.59%,10.6%
+2016.12,12%,11.16%,8.63%,1.9%
+2017.12,21%,-3.61%,12.57%,20.6%
+2018.12,-2%,17.92%,-1.15%,-10.6%
+2019.12,26%,-34.28%,18.83%,19.7%
+2020.12,18%,-50.00%,24.43%,17.5%
+2021.12,28%,58.06%,-3.51%,6.4%
+2022.12,-15%,146.26%,-0.23%,-7.9%
+2023.12,22%,11.05%,13.08%,29.7%
+2024.12,30%,9.20%,27.23%,20.7%
+2025.12,15%,-5.69%,64.69%,27.7%`;
+const ROLLING_WINDOW_YEARS = 20;
+const RETURN_COLUMNS = {
+    'SP500': 'SP500',
+    '米国債券': '米国債券',
+    'ゴールド': 'ゴールド',
+    '日経平均': '日経平均（配当込み）'
+};
+
+function parseReturnsData(csvText) {
+    const [headerLine, ...lines] = csvText.trim().split(/\r?\n/);
+    const headers = headerLine.split(',');
+    return lines.map(line => {
+        const values = line.split(',');
+        const result = { year: Number(values[0].split('.')[0]) };
+        headers.slice(1).forEach((header, index) => {
+            result[header] = Number(values[index + 1].replace('%', '')) / 100;
+        });
+        return result;
+    });
+}
+
+const RETURNS_DATA = parseReturnsData(RETURNS_DATA_CSV);
+
+function generateRollingWindows(totalYears = RETURNS_DATA.length, window = ROLLING_WINDOW_YEARS) {
+    const count = totalYears - window + 1;
+    return Array.from({ length: Math.max(0, count) }, (_, index) => ({
+        rollingNo: index + 1,
+        startIndex: index,
+        endIndex: index + window - 1,
+        startYear: RETURNS_DATA[index].year,
+        endYear: RETURNS_DATA[index + window - 1].year
+    }));
+}
+
+const ROLLING_WINDOWS = generateRollingWindows();
+
+function updateFxProjection() {
+    const annualRate = (parseFloat(document.getElementById('annualFxChange')?.value) || 0) / 100;
+    document.getElementById('fxProjection10').textContent = `${((Math.pow(1 + annualRate, 10) - 1) * 100).toFixed(1)}%`;
+    document.getElementById('fxProjection20').textContent = `${((Math.pow(1 + annualRate, 20) - 1) * 100).toFixed(1)}%`;
+}
+
+function syncFxDefault(modelSelect) {
+    const row = modelSelect.closest('tr');
+    const fxField = row.querySelector('.asset-fx');
+    if (fxField) fxField.checked = ['SP500', '米国債券', 'ゴールド'].includes(modelSelect.value);
+}
+
+// 初期設定としてサンプル行を追加（40歳〜600万、65歳〜200万など）
+window.onload = function() {
+    addIncomeRow(45, 500);
+    addIncomeRow(60, 0);
+    addExpenseRow(45, 400);
+    addExpenseRow(60, 300);
+    const currentAgeField = document.getElementById('currentAge');
+    const socialInsuranceRow = addTemporaryExpenseRow(
+        Number(currentAgeField.value), 60, 80, '年間社会保険料（年金＋健康保険）', 1
+    );
+    addTemporaryExpenseRow(45, 75, 250, '車購入', 10);
+    let previousCurrentAge = currentAgeField.value;
+    currentAgeField.addEventListener('input', () => {
+        const startAgeField = socialInsuranceRow.querySelector('.temp-exp-start-age');
+        if (startAgeField.value === previousCurrentAge) {
+            startAgeField.value = currentAgeField.value;
+        }
+        previousCurrentAge = currentAgeField.value;
+    });
+    addOtherAssetRow('その他', 500, 0.1);
+    updateChildrenRows();
+    attachHelpButtons();
+    attachStandaloneHelpButtons();
+    updateFxProjection();
+};
+
+const helpTexts = {
+    '本人の現在の年齢': 'シミュレーション開始時点の本人の年齢です。計算を開始する年齢や、本人の年齢に連動する項目の基準として使います。',
+    'シミュレーション終了年齢': 'シミュレーションを終了する年齢です。資産推移や成功率を計算する期間の終点として使います。',
+    'インフレ率（名目）(%)': '物価が毎年上昇する割合です。定期支出や、年金受給額の将来推移の計算に使います。年金受給額には、マクロ経済スライドの調整の近似として、インフレ率の1/2が掛けられます。',
+    '配偶者がいますか？': '配偶者の年齢・収入・年金をシミュレーションに含めるかを指定します。ONにすると、配偶者の収入や年金を世帯収入に加えて計算します。',
+    '配偶者の現在の年齢': 'シミュレーション開始時点の配偶者の年齢です。配偶者の収入や年金を、本人の年齢に対応する各年齢で計算するために使います。',
+    '子供の人数': 'シミュレーションに含める子供の人数です。人数分の年齢入力欄を表示するために使います。',
+    '子供の年齢': 'シミュレーション開始時点の子供の年齢です。家族構成の確認に使います。現在の計算では、資産推移や支出額には反映されません。',
+    '終了年齢': '臨時収入または臨時支出が発生する最後の年齢です。発生期間の終わりを判定するために使います。',
+    '定期収入開始年齢': 'その年齢から定期収入が適用され、次の行の開始年齢まで有効です。収入を0にしたい場合は、行を追加して、収入を0と入力してください。',
+    '定期支出開始年齢': 'その年齢から定期支出が適用され、次の行の開始年齢まで有効です。',
+    '収入額(万円/年)': '毎年受け取る収入額です。入力する金額は手取り金額です。本人または配偶者の定期収入として、各年の世帯収入の計算に使います。',
+    '支出額(万円/年)': '毎年の支出額です。インフレ率を反映したうえで、各年の定期支出として計算します。',
+    '年金額（現在価値、万円/年）': 'シミュレーション開始時点の現在価値に換算した年間年金額を入力します。年金額の目安は「ねんきん定期便」や「ねんきんネット」で確認できます。実際の年金受給年齢に応じた増減を反映し、受給開始後はシミュレーション開始時点からの経過年数に応じてインフレ率の1/2を適用して各年の収入を試算します。これはマクロ経済スライドを考慮した簡易的な近似で、実際の年金改定を再現するものではありません。',
+    '実際の年金受給年齢': '年金の受給を開始する年齢です。年金収入の計上開始時期と、繰り上げ・繰り下げによる受給額の調整に使います。',
+    'メモ': '収入・支出の内容を区別するためのメモです。入力内容の確認に使い、計算には影響しません。',
+    '周期(年)': '臨時収入または臨時支出が何年ごとに発生するかを指定します。開始年齢から何年おきに計上するかの判定に使います。',
+    '金額(万円)': '指定した年に発生する臨時の金額です。臨時収入または臨時支出として計上し、臨時支出にはインフレ率を反映します。',
+    '取り崩し時の近似税率（％）': '資産の取り崩し額に含まれる税金を近似する割合です。収支が赤字のとき、資産の取り崩し額を計算するために使います。実際には利益分に20.315%が課税されますが、簡易計算のため売却額にこの税率を掛けます。初期値は10%です。',
+    '運用モデル': 'SP500、米国債券、日経平均（配当込み）、ゴールドの実績系列、または理想リターンを選びます。選択した系列を最初の20年間に使い、その後は設定利回りに切り替えて運用リターンを計算します。',
+    '為替反映': 'ONの場合、その資産に年間為替変動率を資産リターン適用後の変動として毎年反映します。初期推奨値はSP500・米国債券・ゴールドがON、日経平均・理想リターンがOFFです。',
+    '利回りオフセット（％）': '利回りに加算する値です。実績リターンまたは理想リターンの調整に使います。実績モデル開始から20年経過後に適用する設定利回りには適用しません。',
+    '利回りスケール': 'オフセット適用後の利回りに掛ける倍率です。実績リターンまたは理想リターンの調整に使います。実績モデル開始から20年経過後に適用する設定利回りには適用しません。',
+    '利回り(%)': 'その資産クラスの年間利回りです。個別内訳の資産合計と設定利回りの加重平均を表示するために使います。'
+};
+
+function normalizeHelpLabel(text) {
+    return text.trim().replace(/[：:]$/, '');
+}
+
+function getHelpText(labelText, label = null) {
+    const normalizedLabel = normalizeHelpLabel(labelText);
+    const field = label?.nextElementSibling;
+    if (normalizedLabel === '開始年齢') {
+        if (field?.classList.contains('inc-age') || field?.classList.contains('wife-inc-age')) {
+            return helpTexts['定期収入開始年齢'];
+        }
+        if (field?.classList.contains('exp-age')) {
+            return helpTexts['定期支出開始年齢'];
+        }
+        if (field?.classList.contains('temp-inc-start-age') || field?.classList.contains('temp-exp-start-age')) {
+            return '臨時収入または臨時支出が発生し始める年齢です。発生する年を判定するために使います。';
+        }
+    }
+    if (/^子供\d+の年齢$/.test(normalizedLabel)) {
+        return helpTexts['子供の年齢'];
+    }
+    return helpTexts[normalizedLabel];
+}
+
+function attachHelpButtons(root = document) {
+    root.querySelectorAll('label').forEach(label => {
+        if (label.nextElementSibling?.classList.contains('help-button')) return;
+
+        const helpText = getHelpText(label.textContent, label);
+        if (!helpText) return;
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'help-button';
+        button.textContent = '?';
+        button.setAttribute('aria-label', `${normalizeHelpLabel(label.textContent)}のヘルプ`);
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            showHelpBubble(button, helpText);
+        });
+        label.after(button);
+    });
+}
+
+function attachStandaloneHelpButtons(root = document) {
+    root.querySelectorAll('[data-help-text]').forEach(button => {
+        if (button.dataset.helpAttached) return;
+        button.dataset.helpAttached = 'true';
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            showHelpBubble(button, button.dataset.helpText);
+        });
+    });
+}
+
+function showHelpBubble(button, text) {
+    let bubble = document.getElementById('helpBubble');
+    if (!bubble) {
+        bubble = document.createElement('div');
+        bubble.id = 'helpBubble';
+        bubble.className = 'help-bubble';
+        document.body.appendChild(bubble);
+    }
+
+    if (bubble.sourceButton === button && bubble.style.display === 'block') {
+        bubble.style.display = 'none';
+        return;
+    }
+
+    bubble.textContent = text;
+    bubble.sourceButton = button;
+    bubble.style.display = 'block';
+    const buttonRect = button.getBoundingClientRect();
+    const bubbleRect = bubble.getBoundingClientRect();
+    const left = Math.min(buttonRect.left, window.innerWidth - bubbleRect.width - 12);
+    const top = buttonRect.bottom + 10;
+    bubble.style.left = `${Math.max(12, left)}px`;
+    bubble.style.top = `${top}px`;
+}
+
+document.addEventListener('click', () => {
+    const bubble = document.getElementById('helpBubble');
+    if (bubble) bubble.style.display = 'none';
+});
+
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+        const bubble = document.getElementById('helpBubble');
+        if (bubble) bubble.style.display = 'none';
+    }
+});
+
+function toggleWifeSection() {
+    const hasWife = document.getElementById('hasWife').checked;
+    document.getElementById('wifeAgeSection').style.display = hasWife ? 'block' : 'none';
+    document.getElementById('wifeIncomeSection').style.display = hasWife ? 'block' : 'none';
+    if (hasWife && document.getElementById('wifeIncomeRows').children.length === 0) {
+        addWifeIncomeRow(45, 400);
+    }
+}
+
+function readFieldValue(id) {
+    const field = document.getElementById(id);
+    if (!field) return '';
+    return field.type === 'checkbox' ? field.checked : field.value;
+}
+
+function setFieldValue(id, value) {
+    const field = document.getElementById(id);
+    if (!field || value === undefined) return;
+    if (field.type === 'checkbox') {
+        field.checked = Boolean(value);
+    } else {
+        field.value = value;
+    }
+}
+
+function collectNamedRows(containerSelector, fields) {
+    return [...document.querySelectorAll(`${containerSelector} .dynamic-row`)].map(row => {
+        const values = {};
+        fields.forEach(([selector, name]) => {
+            values[name] = row.querySelector(selector)?.value ?? '';
+        });
+        return values;
+    });
+}
+
+function applyNamedRows(containerSelector, rows, addRow, fieldNames) {
+    document.querySelector(containerSelector).innerHTML = '';
+    rows.forEach(row => addRow(...fieldNames.map(name => row[name] ?? '')));
+}
+
+function createTextParameters() {
+    const fixedAssets = [
+        ['外国株式', 'for_eq'], ['国内株式', 'dom_eq'], ['外国債券', 'for_bd'],
+        ['国内債券', 'dom_bd'], ['ゴールド', 'gold'], ['現金', 'cash']
+    ];
+
+    return {
+        'ファイル形式': 'ライフプランシミュレータ入力パラメータ',
+        'バージョン': 2,
+        '基本情報': {
+            '本人の現在の年齢': readFieldValue('currentAge'),
+            'シミュレーション終了年齢': readFieldValue('endAge'),
+            'インフレ率（名目）(%)': readFieldValue('inflationRate'),
+            '配偶者がいますか？': readFieldValue('hasWife'),
+            '配偶者の現在の年齢': readFieldValue('wifeAge'),
+            '子供の人数': readFieldValue('childrenCount'),
+            '子供の年齢': [...document.querySelectorAll('.child-age')].map(field => field.value)
+        },
+        '収入': {
+            '本人の定期収入': collectNamedRows('#incomeRows', [['.inc-age', '開始年齢'], ['.inc-amt', '収入額(万円/年)']]),
+            '年金受給予定額(万円/年)': readFieldValue('pensionAmount'),
+            '実際の年金受給年齢': readFieldValue('pensionAge'),
+            '配偶者の定期収入': collectNamedRows('#wifeIncomeRows', [['.wife-inc-age', '開始年齢'], ['.wife-inc-amt', '収入額(万円/年)']]),
+            '配偶者の年金受給予定額(万円/年)': readFieldValue('wifePensionAmount'),
+            '配偶者の実際の年金受給年齢': readFieldValue('wifePensionAge'),
+            '臨時収入': collectNamedRows('#temporaryIncomeRows', [
+                ['.temp-inc-memo', 'メモ'], ['.temp-inc-start-age', '開始年齢'], ['.temp-inc-end-age', '終了年齢'],
+                ['.temp-inc-period', '周期(年)'], ['.temp-inc-amt', '金額(万円)']
+            ])
+        },
+        '支出': {
+            '本人の定期支出': collectNamedRows('#expenseRows', [['.exp-age', '開始年齢'], ['.exp-amt', '支出額(万円/年)']]),
+            '臨時支出': collectNamedRows('#temporaryExpenseRows', [
+                ['.temp-exp-memo', 'メモ'], ['.temp-exp-start-age', '開始年齢'], ['.temp-exp-end-age', '終了年齢'],
+                ['.temp-exp-period', '周期(年)'], ['.temp-exp-amt', '金額(万円)']
+            ])
+        },
+        '資産と運用': {
+            '運用取り崩し時の近似税率（％）': readFieldValue('investmentTaxRate'),
+            '年間為替変動率(%)': readFieldValue('annualFxChange'),
+            '個別資産': fixedAssets.filter(([, id]) => document.getElementById(`ast_${id}`)).map(([name, id]) => ({
+                '資産クラス': name,
+                '資産額(万円)': readFieldValue(`ast_${id}`),
+                '設定利回り(%)': readFieldValue(`ret_${id}`),
+                '運用モデル': readFieldValue(`model_${id}`),
+                '為替反映': readFieldValue(`fx_${id}`),
+                '利回りオフセット(%)': readFieldValue(`offset_${id}`),
+                '利回りスケール': readFieldValue(`scale_${id}`)
+            })),
+            'その他資産': [...document.querySelectorAll('.other-asset-row')].map(row => ({
+                '資産名': row.querySelector('.other-asset-name').value,
+                '資産額(万円)': row.querySelector('.other-asset-amount').value,
+                '設定利回り(%)': row.querySelector('.other-asset-return').value,
+                '運用モデル': row.querySelector('.other-asset-model').value,
+                '為替反映': row.querySelector('.other-asset-fx').checked,
+                '利回りオフセット(%)': row.querySelector('.other-asset-offset').value,
+                '利回りスケール': row.querySelector('.other-asset-scale').value
+            }))
+        }
+    };
+}
+
+function exportSimulationParameters() {
+    const text = JSON.stringify(createTextParameters(), null, 2);
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'life-plan-parameters.txt';
+    link.click();
+    URL.revokeObjectURL(url);
+    document.getElementById('parameterSaveStatus').textContent = 'テキストファイルを出力しました';
+}
+
+function loadSimulationParametersFromFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        try {
+            applyTextParameters(JSON.parse(reader.result));
+            document.getElementById('parameterSaveStatus').textContent = 'テキストファイルを読み込みました';
+        } catch (error) {
+            document.getElementById('parameterSaveStatus').textContent = '読み込みに失敗しました。JSON形式を確認してください';
+        }
+        event.target.value = '';
+    };
+    reader.readAsText(file, 'UTF-8');
+}
+
+function applyTextParameters(parameters) {
+    const basic = parameters['基本情報'] || {};
+    const income = parameters['収入'] || {};
+    const expense = parameters['支出'] || {};
+    const assets = parameters['資産と運用'] || {};
+
+    setFieldValue('currentAge', basic['本人の現在の年齢']);
+    setFieldValue('endAge', basic['シミュレーション終了年齢']);
+    setFieldValue('inflationRate', basic['インフレ率（名目）(%)']);
+    setFieldValue('hasWife', basic['配偶者がいますか？']);
+    setFieldValue('wifeAge', basic['配偶者の現在の年齢']);
+    setFieldValue('childrenCount', basic['子供の人数']);
+    setFieldValue('pensionAmount', income['年金受給予定額(万円/年)']);
+    setFieldValue('pensionAge', income['実際の年金受給年齢']);
+    setFieldValue('wifePensionAmount', income['配偶者の年金受給予定額(万円/年)']);
+    setFieldValue('wifePensionAge', income['配偶者の実際の年金受給年齢']);
+    setFieldValue('investmentTaxRate', assets['運用取り崩し時の近似税率（％）']);
+    setFieldValue('annualFxChange', assets['年間為替変動率(%)']);
+    toggleWifeSection();
+    updateChildrenRows();
+    document.querySelectorAll('.child-age').forEach((field, index) => {
+        field.value = basic['子供の年齢']?.[index] ?? field.value;
+    });
+
+    applyNamedRows('#incomeRows', income['本人の定期収入'] || [], addIncomeRow, ['開始年齢', '収入額(万円/年)']);
+    applyNamedRows('#wifeIncomeRows', income['配偶者の定期収入'] || [], addWifeIncomeRow, ['開始年齢', '収入額(万円/年)']);
+    applyNamedRows('#expenseRows', expense['本人の定期支出'] || [], addExpenseRow, ['開始年齢', '支出額(万円/年)']);
+    applyNamedRows('#temporaryIncomeRows', income['臨時収入'] || [], addTemporaryIncomeRow, ['開始年齢', '終了年齢', '金額(万円)', 'メモ', '周期(年)']);
+    const temporaryExpenseRows = [...(expense['臨時支出'] || [])];
+    if (
+        Object.prototype.hasOwnProperty.call(expense, '社会保険料を計算する') &&
+        expense['社会保険料を計算する'] &&
+        expense['年間社会保険料(万円) 年金＋健康保険'] !== undefined
+    ) {
+        temporaryExpenseRows.push({
+            'メモ': '年間社会保険料（年金＋健康保険）',
+            '開始年齢': basic['本人の現在の年齢'],
+            '終了年齢': 59,
+            '周期(年)': 1,
+            '金額(万円)': expense['年間社会保険料(万円) 年金＋健康保険']
+        });
+    }
+    applyNamedRows('#temporaryExpenseRows', temporaryExpenseRows, addTemporaryExpenseRow, ['開始年齢', '終了年齢', '金額(万円)', 'メモ', '周期(年)']);
+    const otherRows = assets['その他資産'] || [];
+    document.getElementById('otherAssetRows').innerHTML = '';
+    otherRows.forEach(asset => addOtherAssetRow(
+        asset['資産名'], asset['資産額(万円)'], asset['設定利回り(%)'] ?? asset['利回り(%)'] ?? 0.1,
+        asset['運用モデル'] || '理想リターン', asset['為替反映'] ?? false,
+        asset['利回りオフセット(%)'] ?? 0, asset['利回りスケール'] ?? 1
+    ));
+
+    const assetIds = {
+        '外国株式': 'for_eq', '国内株式': 'dom_eq', '外国債券': 'for_bd',
+        '国内債券': 'dom_bd', 'ゴールド': 'gold', '現金': 'cash'
+    };
+    const individualAssets = assets['個別資産'];
+    if (Array.isArray(individualAssets)) {
+        const includedNames = new Set(individualAssets.map(asset => asset['資産クラス']));
+        document.querySelectorAll('#assetInputTable tbody tr[data-asset-key]').forEach(row => {
+            if (!includedNames.has(row.cells[0].textContent.trim())) row.remove();
+        });
+    }
+    (individualAssets || []).forEach(asset => {
+        const id = assetIds[asset['資産クラス']];
+        if (!id) return;
+        setFieldValue(`ast_${id}`, asset['資産額(万円)']);
+        setFieldValue(`ret_${id}`, asset['設定利回り(%)']);
+        setFieldValue(`model_${id}`, asset['運用モデル']);
+        setFieldValue(`fx_${id}`, asset['為替反映']);
+        setFieldValue(`offset_${id}`, asset['利回りオフセット(%)']);
+        setFieldValue(`scale_${id}`, asset['利回りスケール']);
+    });
+    updateFxProjection();
+    attachHelpButtons();
+    attachStandaloneHelpButtons();
+}
+
+function updateChildrenRows() {
+    const count = parseInt(document.getElementById('childrenCount').value);
+    const section = document.getElementById('childrenAgesSection');
+    section.innerHTML = '';
+
+    for (let i = 0; i < count; i++) {
+        const div = document.createElement('div');
+        div.className = 'field-row';
+        div.innerHTML = `<label>子供${i + 1}の年齢:</label><input type="number" class="child-age" value="9">`;
+        section.appendChild(div);
+        attachHelpButtons(div);
+    }
+}
+
+function addIncomeRow(age = '', amt = '') {
+    const container = document.getElementById('incomeRows');
+    const div = document.createElement('div');
+    div.className = 'dynamic-row';
+    div.innerHTML = `
+        <label>開始年齢:</label><input type="number" class="inc-age" value="${age}" style="width:80px;">
+        <label>収入額(万円/年):</label><input type="number" class="inc-amt" value="${amt}" style="width:100px;">
+        <button type="button" class="sub-btn" onclick="this.parentElement.remove()">削除</button>
+    `;
+    container.appendChild(div);
+    attachHelpButtons(div);
+}
+
+function addWifeIncomeRow(age = '', amt = '') {
+    const container = document.getElementById('wifeIncomeRows');
+    const div = document.createElement('div');
+    div.className = 'dynamic-row';
+    div.innerHTML = `
+        <label>開始年齢:</label><input type="number" class="wife-inc-age" value="${age}" style="width:80px;">
+        <label>収入額(万円/年):</label><input type="number" class="wife-inc-amt" value="${amt}" style="width:100px;">
+        <button type="button" class="sub-btn" onclick="this.parentElement.remove()">削除</button>
+    `;
+    container.appendChild(div);
+    attachHelpButtons(div);
+}
+
+function addExpenseRow(age = '', amt = '') {
+    const container = document.getElementById('expenseRows');
+    const div = document.createElement('div');
+    div.className = 'dynamic-row';
+    div.innerHTML = `
+        <label>開始年齢:</label><input type="number" class="exp-age" value="${age}" style="width:80px;">
+        <label>支出額(万円/年):</label><input type="number" class="exp-amt" value="${amt}" style="width:100px;">
+        <button type="button" class="sub-btn" onclick="this.parentElement.remove()">削除</button>
+    `;
+    container.appendChild(div);
+    attachHelpButtons(div);
+}
+
+function addOtherAssetRow(name = '', amount = '', ret = 0.1, model = '理想リターン', fxEnabled = false, offset = 0, scale = 1) {
+    const container = document.getElementById('otherAssetRows');
+    const count = container.querySelectorAll('.other-asset-row').length + 1;
+    const autoName = name || `その他${count}`;
+    const row = document.createElement('tr');
+    row.className = 'other-asset-row';
+    row.innerHTML = `
+        <td><input type="text" class="other-asset-name" value="${autoName}" placeholder="例：不動産" aria-label="資産名"></td>
+        <td><input type="number" class="other-asset-amount" value="${amount}" min="0" step="any" aria-label="資産額（万円）"></td>
+        <td><input type="number" class="other-asset-return" value="${ret}" step="0.1" aria-label="設定利回り（％）"></td>
+        <td><select class="other-asset-model" onchange="syncFxDefault(this)" aria-label="運用モデル">
+            ${['SP500', '米国債券', '日経平均', 'ゴールド', '理想リターン'].map(option => `<option${option === model ? ' selected' : ''}>${option}</option>`).join('')}
+        </select></td>
+        <td><input type="checkbox" class="asset-fx other-asset-fx" ${fxEnabled ? 'checked' : ''} aria-label="${autoName}の為替反映"></td>
+        <td><input type="number" class="other-asset-offset" value="${offset}" step="0.1" aria-label="利回りオフセット（％）"></td>
+        <td><input type="number" class="other-asset-scale" value="${scale}" min="0" step="0.01" aria-label="利回りスケール"></td>
+        <td><button type="button" class="sub-btn" onclick="removeAssetRow(this)">削除</button></td>
+    `;
+    container.appendChild(row);
+    attachHelpButtons(row);
+}
+
+function addTemporaryIncomeRow(startAge = '', endAge = '', amt = '', memo = '', period = 1) {
+    const container = document.getElementById('temporaryIncomeRows');
+    const div = document.createElement('div');
+    div.className = 'dynamic-row';
+    div.innerHTML = `
+        <label>メモ:</label><input type="text" class="temp-inc-memo" value="${memo}" style="width:150px;" placeholder="例：退職金">
+        <label>開始年齢:</label><input type="number" class="temp-inc-start-age" value="${startAge}" style="width:80px;">
+        <label>終了年齢:</label><input type="number" class="temp-inc-end-age" value="${endAge}" style="width:80px;">
+        <label>周期(年):</label><input type="number" class="temp-inc-period" value="${period}" min="1" style="width:70px;">
+        <label>金額(万円):</label><input type="number" class="temp-inc-amt" value="${amt}" style="width:100px;">
+        <button type="button" class="sub-btn" onclick="this.parentElement.remove()">削除</button>
+    `;
+    container.appendChild(div);
+    attachHelpButtons(div);
+}
+
+function addTemporaryExpenseRow(startAge = '', endAge = '', amt = '', memo = '', period = 1) {
+    const container = document.getElementById('temporaryExpenseRows');
+    const div = document.createElement('div');
+    div.className = 'dynamic-row';
+    div.innerHTML = `
+        <label>メモ:</label><input type="text" class="temp-exp-memo" value="${memo}" style="width:150px;" placeholder="例：車購入">
+        <label>開始年齢:</label><input type="number" class="temp-exp-start-age" value="${startAge}" style="width:80px;">
+        <label>終了年齢:</label><input type="number" class="temp-exp-end-age" value="${endAge}" style="width:80px;">
+        <label>周期(年):</label><input type="number" class="temp-exp-period" value="${period}" min="1" style="width:70px;">
+        <label>金額(万円):</label><input type="number" class="temp-exp-amt" value="${amt}" style="width:100px;">
+        <button type="button" class="sub-btn" onclick="this.parentElement.remove()">削除</button>
+    `;
+    container.appendChild(div);
+    return div;
+}
+
+function getTemporaryValue(rowClassStartAge, rowClassEndAge, rowClassAmt, rowClassPeriod, targetAge) {
+    let startAges = document.querySelectorAll(rowClassStartAge);
+    let endAges = document.querySelectorAll(rowClassEndAge);
+    let amts = document.querySelectorAll(rowClassAmt);
+    let periods = document.querySelectorAll(rowClassPeriod);
+    let totalValue = 0;
+    
+    for(let i = 0; i < startAges.length; i++) {
+        let start = parseInt(startAges[i].value);
+        let end = parseInt(endAges[i].value);
+        let period = parseInt(periods[i]?.value) || 1;
+        let val = parseFloat(amts[i].value) || 0;
+        
+        if(!isNaN(start) && !isNaN(end) && period > 0 && targetAge >= start && targetAge <= end) {
+            let diff = targetAge - start;
+            if (diff % period === 0) {
+                totalValue += val;
+            }
+        }
+    }
+    
+    return totalValue;
+}
+
+function getAssetClassInputs() {
+    const fixedAssets = [
+        ['外国株式', 'for_eq'], ['国内株式', 'dom_eq'], ['外国債券', 'for_bd'],
+        ['国内債券', 'dom_bd'], ['ゴールド', 'gold'], ['現金', 'cash']
+    ].filter(([, id]) => document.getElementById(`ast_${id}`)).map(([name, id]) => ({
+        name,
+        id,
+        val: Number(document.getElementById(`ast_${id}`).value),
+        settingRate: Number(document.getElementById(`ret_${id}`).value) / 100,
+        model: document.getElementById(`model_${id}`).value,
+        fxEnabled: document.getElementById(`fx_${id}`).checked,
+        offset: Number(document.getElementById(`offset_${id}`).value) / 100,
+        scale: Number(document.getElementById(`scale_${id}`).value)
+    }));
+
+    const otherAssets = [...document.querySelectorAll('.other-asset-row')].map((row, index) => ({
+        name: (row.querySelector('.other-asset-name').value || '').trim() || `その他${index + 1}`,
+        id: `other-${index}`,
+        val: Number(row.querySelector('.other-asset-amount').value),
+        settingRate: Number(row.querySelector('.other-asset-return').value) / 100,
+        model: row.querySelector('.other-asset-model').value,
+        fxEnabled: row.querySelector('.other-asset-fx').checked,
+        offset: Number(row.querySelector('.other-asset-offset').value) / 100,
+        scale: Number(row.querySelector('.other-asset-scale').value)
+    }));
+
+    return [...fixedAssets, ...otherAssets].map(asset => ({
+        ...asset,
+        val: Number.isFinite(asset.val) ? asset.val : 0,
+        settingRate: Number.isFinite(asset.settingRate) ? asset.settingRate : 0,
+        offset: Number.isFinite(asset.offset) ? asset.offset : 0,
+        scale: Number.isFinite(asset.scale) ? asset.scale : 1
+    }));
+}
+
+function removeAssetRow(button) {
+    button.closest('tr').remove();
+}
+
+function calculateAssetSummary() {
+    const assets = getAssetClassInputs();
+    const total = assets.reduce((sum, asset) => sum + asset.val, 0);
+    const weightedReturn = assets.reduce((sum, asset) => sum + asset.val * asset.settingRate, 0);
+    const summary = document.getElementById('assetSummary');
+    if (total <= 0) {
+        summary.textContent = '資産合計: 0万円（平均利回りは表示できません。資産合計が0のためシミュレーションは実行できません）';
+        return;
+    }
+    summary.textContent = `資産合計: ${total.toLocaleString(undefined, { maximumFractionDigits: 2 })}万円 / 設定利回りの加重平均: ${(weightedReturn / total * 100).toFixed(2)}%`;
+}
+
+function normalizeTargetWeights(assetBreakdown, targetWeights) {
+    if (!assetBreakdown || assetBreakdown.length === 0) return [];
+
+    const normalized = assetBreakdown.map(asset => {
+        const match = targetWeights.find(t => t.name === asset.name);
+        return {
+            name: asset.name,
+            weight: match ? Math.max(0, match.weight) : 0
+        };
+    });
+
+    const totalWeight = normalized.reduce((sum, item) => sum + item.weight, 0);
+    if (totalWeight <= 0) {
+        const defaultWeight = 1 / normalized.length;
+        return normalized.map(item => ({ ...item, weight: defaultWeight }));
+    }
+
+    return normalized.map(item => ({
+        ...item,
+        weight: item.weight / totalWeight
+    }));
+}
+
+function getTargetWeightsFromAssets(assetList) {
+    const total = assetList.reduce((sum, asset) => sum + Math.max(0, asset.val), 0);
+    if (total <= 0) {
+        return assetList.map(asset => ({ ...asset, weight: 0 }));
+    }
+
+    return assetList.map(asset => ({
+        ...asset,
+        weight: Math.max(0, asset.val) / total
+    }));
+}
+
+function computeTargetValues(assetBreakdown, targetWeights, totalValue) {
+    const normalizedWeights = normalizeTargetWeights(assetBreakdown, targetWeights);
+    const total = Math.max(0, totalValue || assetBreakdown.reduce((sum, asset) => sum + Math.max(0, asset.val), 0));
+
+    return assetBreakdown.map(asset => {
+        const match = normalizedWeights.find(item => item.name === asset.name);
+        const weight = match ? match.weight : 0;
+        return {
+            name: asset.name,
+            targetValue: total * weight
+        };
+    });
+}
+
+function liquidateFromAssetBreakdown(assetBreakdown, targetWeights, amount) {
+    if (!assetBreakdown || assetBreakdown.length === 0 || amount <= 0) return;
+
+    let remaining = amount;
+
+    // 1. 現金から優先して取り崩す
+    const cashAsset = assetBreakdown.find(asset => asset.name === '現金');
+    if (cashAsset) {
+        const cashUse = Math.min(Math.max(0, cashAsset.val), remaining);
+        cashAsset.val = Math.max(0, cashAsset.val - cashUse);
+        remaining -= cashUse;
+    }
+
+    if (remaining <= 0) return;
+
+    // 2. 残り不足分は、各資産のターゲット配分に沿って比例売却する
+    const saleCandidates = assetBreakdown.filter(asset => asset.name !== '現金' && Math.max(0, asset.val) > 0);
+    if (saleCandidates.length === 0) return;
+
+    const portfolioTotal = assetBreakdown.reduce((sum, asset) => sum + Math.max(0, asset.val), 0);
+    const targetValues = computeTargetValues(assetBreakdown, targetWeights, portfolioTotal);
+    const totalTargetWeight = saleCandidates.reduce((sum, asset) => {
+        const target = targetValues.find(item => item.name === asset.name);
+        return sum + (target ? target.targetValue : 0);
+    }, 0);
+
+    for (const asset of saleCandidates) {
+        if (remaining <= 0) break;
+
+        const target = targetValues.find(item => item.name === asset.name);
+        const targetSell = totalTargetWeight > 0
+            ? remaining * ((target ? target.targetValue : 0) / totalTargetWeight)
+            : remaining / saleCandidates.length;
+
+        const sellAmount = Math.min(asset.val, targetSell);
+        asset.val -= sellAmount;
+        remaining -= sellAmount;
+    }
+
+    // 3. 最後に余りが出る場合は、そのまま順番に売却する
+    if (remaining > 0) {
+        for (const asset of saleCandidates) {
+            if (remaining <= 0) break;
+            const sellAmount = Math.min(asset.val, remaining);
+            asset.val -= sellAmount;
+            remaining -= sellAmount;
+        }
+    }
+}
+
+function rebalanceAssetBreakdown(assetBreakdown, targetWeights, totalValue) {
+    if (!assetBreakdown || assetBreakdown.length === 0) return assetBreakdown;
+
+    // 数式:
+    // 1) 予想運用リターンを適用した後の保有額 A_i^+ = A_i * (1 + r_i)
+    // 2) 年間のキャッシュフロー CF = 収入 - 支出 + 臨時収入 - 臨時支出
+    // 3) 目標保有額 T_i = w_i * V_total_after_flow
+    // 4) 調整額 Δ_i = T_i - A_i^+
+    //    - Δ_i < 0 -> 売却
+    //    - Δ_i > 0 -> 現金から購入
+    const working = assetBreakdown.map(asset => ({
+        ...asset,
+        val: Math.max(0, asset.val)
+    }));
+
+    const total = Math.max(0, totalValue || working.reduce((sum, asset) => sum + asset.val, 0));
+    if (total <= 0) {
+        return working.map(asset => ({ ...asset, val: 0 }));
+    }
+
+    const targetValues = computeTargetValues(working, targetWeights, total);
+    const targetMap = new Map(targetValues.map(item => [item.name, item.targetValue]));
+
+    let cashBalance = (working.find(asset => asset.name === '現金') || { val: 0 }).val;
+
+    for (const asset of working) {
+        const target = targetMap.get(asset.name) || 0;
+        const delta = target - asset.val;
+
+        if (delta < 0) {
+            const sellAmount = Math.abs(delta);
+            asset.val = Math.max(0, asset.val - sellAmount);
+            cashBalance += sellAmount;
+        }
+    }
+
+    for (const asset of working) {
+        if (cashBalance <= 0) break;
+        const target = targetMap.get(asset.name) || 0;
+        const delta = target - asset.val;
+
+        if (delta > 0) {
+            const buyAmount = Math.min(delta, cashBalance);
+            asset.val += buyAmount;
+            cashBalance -= buyAmount;
+        }
+    }
+
+    const cashAsset = working.find(asset => asset.name === '現金');
+    if (cashAsset) {
+        cashAsset.val = cashBalance;
+    } else if (cashBalance > 0) {
+        working.push({ name: '現金', val: cashBalance, ret: 0.1 });
+    }
+
+    return working;
+}
+
+function getStepValue(rowClassAge, rowClassAmt, targetAge) {
+    let ages = document.querySelectorAll(rowClassAge);
+    let amts = document.querySelectorAll(rowClassAmt);
+    let settings = [];
+    for(let i = 0; i < ages.length; i++) {
+        let a = parseInt(ages[i].value);
+        let val = parseFloat(amts[i].value);
+        if(!isNaN(a) && !isNaN(val)) {
+            settings.push({ age: a, amount: val });
+        }
+    }
+    settings.sort((a, b) => a.age - b.age);
+    
+    let currentVal = 0;
+    for(let s of settings) {
+        if(targetAge >= s.age) {
+            currentVal = s.amount;
+        } else {
+            break;
+        }
+    }
+    return currentVal;
+}
+
+function getAnnualHouseholdPlan(currentAge, endAge, inflation) {
+    const pensionAge = Number(document.getElementById('pensionAge').value);
+    const pensionBase = Number(document.getElementById('pensionAmount').value) || 0;
+    const pensionAdjustmentMonths = (pensionAge - 65) * 12;
+    const pensionAdjustment = pensionAdjustmentMonths < 0
+        ? pensionAdjustmentMonths * 0.004
+        : pensionAdjustmentMonths * 0.007;
+    const adjustedPension = pensionBase * (1 + pensionAdjustment);
+    const hasWife = document.getElementById('hasWife').checked;
+    const wifeAge = hasWife ? Number(document.getElementById('wifeAge').value) : 0;
+    const wifePensionAge = hasWife ? Number(document.getElementById('wifePensionAge').value) : 0;
+    const wifePensionBase = hasWife ? Number(document.getElementById('wifePensionAmount').value) || 0 : 0;
+    const wifeAdjustmentMonths = (wifePensionAge - 65) * 12;
+    const wifeAdjustment = wifeAdjustmentMonths < 0
+        ? wifeAdjustmentMonths * 0.004
+        : wifeAdjustmentMonths * 0.007;
+    const adjustedWifePension = wifePensionBase * (1 + wifeAdjustment);
+    return Array.from({ length: endAge - currentAge }, (_, yearOffset) => {
+        const age = currentAge + yearOffset;
+        const yearsSinceStart = age - currentAge;
+        const laborIncome = getStepValue('.inc-age', '.inc-amt', age);
+        const pensionIncome = age >= pensionAge
+            ? adjustedPension * Math.pow(1 + inflation * 0.5, yearsSinceStart)
+            : 0;
+        let wifeIncome = 0;
+        if (hasWife) {
+            const currentWifeAge = wifeAge + yearsSinceStart;
+            const wifeLaborIncome = getStepValue('.wife-inc-age', '.wife-inc-amt', currentWifeAge);
+            const wifePensionIncome = currentWifeAge >= wifePensionAge
+                ? adjustedWifePension * Math.pow(1 + inflation * 0.5, yearsSinceStart)
+                : 0;
+            wifeIncome = wifeLaborIncome + wifePensionIncome;
+        }
+        const regularIncome = laborIncome + pensionIncome + wifeIncome;
+        const baseExpense = getStepValue('.exp-age', '.exp-amt', age);
+        const regularExpense = baseExpense * Math.pow(1 + inflation, yearsSinceStart);
+        const extraIncome = getTemporaryValue('.temp-inc-start-age', '.temp-inc-end-age', '.temp-inc-amt', '.temp-inc-period', age);
+        const extraExpense = getTemporaryValue('.temp-exp-start-age', '.temp-exp-end-age', '.temp-exp-amt', '.temp-exp-period', age)
+            * Math.pow(1 + inflation, yearsSinceStart);
+        const income = regularIncome + extraIncome;
+        const expense = regularExpense + extraExpense;
+        return {
+            age,
+            regularIncome,
+            extraIncome,
+            income,
+            regularExpense,
+            extraExpense,
+            expense,
+            netCashFlow: income - expense
+        };
+    });
+}
+
+function getAssetReturnRate(asset, yearOffset, window, annualFxRate, useSettingReturn = false) {
+    const isIdeal = asset.model === '理想リターン';
+    let rate;
+    if (useSettingReturn) {
+        rate = asset.settingRate;
+    } else if (isIdeal) {
+        rate = (asset.settingRate + asset.offset) * asset.scale;
+    } else if (yearOffset < ROLLING_WINDOW_YEARS) {
+        const dataRow = RETURNS_DATA[window.startIndex + yearOffset];
+        rate = ((dataRow[RETURN_COLUMNS[asset.model]] ?? asset.settingRate) + asset.offset) * asset.scale;
+    } else {
+        rate = asset.settingRate;
+    }
+    rate = Math.max(-1, rate);
+    return asset.fxEnabled ? ((1 + rate) * (1 + annualFxRate)) - 1 : rate;
+}
+
+function distributeByWeights(assets, amount, weights) {
+    assets.forEach((asset, index) => {
+        asset.val += amount * weights[index];
+    });
+}
+
+function applyHouseholdCashFlow(assets, netCashFlow, weights, taxRate) {
+    if (netCashFlow >= 0) {
+        distributeByWeights(assets, netCashFlow, weights);
+        return false;
+    }
+
+    const grossWithdrawal = -netCashFlow / (1 - taxRate);
+    const available = assets.reduce((sum, asset) => sum + asset.val, 0);
+    if (grossWithdrawal >= available - 1e-9) {
+        assets.forEach(asset => { asset.val = 0; });
+        return true;
+    }
+    assets.forEach(asset => {
+        asset.val -= grossWithdrawal * (asset.val / available);
+    });
+    return false;
+}
+
+function rebalanceWithSaleTax(assets, weights, taxRate) {
+    const total = assets.reduce((sum, asset) => sum + asset.val, 0);
+    if (total <= 0) return;
+    const targets = weights.map(weight => total * weight);
+    let grossSales = 0;
+    assets.forEach((asset, index) => {
+        if (asset.val > targets[index]) {
+            const sale = asset.val - targets[index];
+            asset.val -= sale;
+            grossSales += sale;
+        }
+    });
+    const deficits = assets.map((asset, index) => Math.max(0, targets[index] - asset.val));
+    const totalDeficit = deficits.reduce((sum, deficit) => sum + deficit, 0);
+    const netSaleProceeds = grossSales * (1 - taxRate);
+    if (totalDeficit <= 0 || netSaleProceeds <= 0) return;
+    const amountToInvest = Math.min(totalDeficit, netSaleProceeds);
+    assets.forEach((asset, index) => {
+        asset.val += amountToInvest * (deficits[index] / totalDeficit);
+    });
+}
+
+function runRollingWindow(window, initialAssets, weights, householdPlan, currentAge, endAge, inflation, taxRate, annualFxRate, useSettingReturn = false) {
+    const assets = initialAssets.map(asset => ({ ...asset }));
+    const rows = [];
+    const initialTotal = assets.reduce((sum, asset) => sum + asset.val, 0);
+    rows.push({ age: currentAge, totalAsset: initialTotal, realAsset: initialTotal, annualCashFlow: 0, averageReturnRate: 0, investmentReturn: 0, income: 0, regularIncome: 0, extraIncome: 0, expense: 0, regularExpense: 0, extraExpense: 0, inflationFactor: 1 });
+    let depleted = false;
+    let depletionAge = null;
+
+    householdPlan.forEach((flow, yearOffset) => {
+        if (depleted) {
+            rows.push({ age: flow.age + 1, totalAsset: 0, realAsset: 0, annualCashFlow: 0, averageReturnRate: 0, investmentReturn: 0, income: 0, regularIncome: 0, extraIncome: 0, expense: 0, regularExpense: 0, extraExpense: 0, inflationFactor: Math.pow(1 + inflation, yearOffset + 1) });
+            return;
+        }
+        const openingTotalAsset = assets.reduce((sum, asset) => sum + asset.val, 0);
+        let investmentReturn = 0;
+        assets.forEach(asset => {
+            const beforeReturn = asset.val;
+            const rate = getAssetReturnRate(asset, yearOffset, window, annualFxRate, useSettingReturn);
+            asset.val *= 1 + rate;
+            investmentReturn += asset.val - beforeReturn;
+        });
+        depleted = applyHouseholdCashFlow(assets, flow.netCashFlow, weights, taxRate);
+        const balanceAfterFlow = assets.reduce((sum, asset) => sum + asset.val, 0);
+        if (!depleted && balanceAfterFlow > 0) {
+            rebalanceWithSaleTax(assets, weights, taxRate);
+        }
+        const totalAsset = assets.reduce((sum, asset) => sum + asset.val, 0);
+        if (totalAsset <= 1e-9) {
+            depleted = true;
+            assets.forEach(asset => { asset.val = 0; });
+            if (depletionAge === null) depletionAge = flow.age + 1;
+        }
+        if (depleted && depletionAge === null) depletionAge = flow.age + 1;
+        const inflationFactor = Math.pow(1 + inflation, yearOffset + 1);
+        rows.push({
+            age: flow.age + 1,
+            totalAsset: depleted ? 0 : totalAsset,
+            realAsset: (depleted ? 0 : totalAsset) / inflationFactor,
+            annualCashFlow: flow.netCashFlow + investmentReturn,
+            averageReturnRate: openingTotalAsset > 0 ? investmentReturn / openingTotalAsset : 0,
+            investmentReturn,
+            income: flow.income,
+            regularIncome: flow.regularIncome,
+            extraIncome: flow.extraIncome,
+            expense: flow.expense,
+            regularExpense: flow.regularExpense,
+            extraExpense: flow.extraExpense,
+            inflationFactor
+        });
+    });
+
+    return {
+        ...window,
+        rows,
+        finalAsset: rows[rows.length - 1].totalAsset,
+        success: !depleted,
+        depletionAge
+    };
+}
+
+function runSimulation() {
+    const currentAge = Number(document.getElementById('currentAge').value);
+    const endAge = Number(document.getElementById('endAge').value);
+    const inflation = Number(document.getElementById('inflationRate').value) / 100;
+    const taxRate = Number(document.getElementById('investmentTaxRate').value) / 100;
+    const annualFxRate = Number(document.getElementById('annualFxChange').value) / 100;
+    const assets = getAssetClassInputs();
+    const initialTotal = assets.reduce((sum, asset) => sum + asset.val, 0);
+    const years = endAge - currentAge;
+    if (!Number.isInteger(currentAge) || !Number.isInteger(endAge) || years < 1) {
+        alert('終了年齢は現在年齢より大きい整数で入力してください。');
+        return;
+    }
+    if (assets.some(asset => asset.val < 0 || asset.scale < 0) || initialTotal <= 0) {
+        alert('各資産額・スケールは0以上、初期資産合計は0より大きい値にしてください。');
+        return;
+    }
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate >= 1 || !Number.isFinite(annualFxRate) || annualFxRate <= -1) {
+        alert('税率は0%以上100%未満、為替変動率は-100%より大きい値にしてください。');
+        return;
+    }
+    const requiredReturnColumns = Object.values(RETURN_COLUMNS);
+    const validReturnData = RETURNS_DATA.length === 53 && RETURNS_DATA.every((row, index) =>
+        row.year === 1973 + index && requiredReturnColumns.every(column => Number.isFinite(row[column]))
+    );
+    if (!validReturnData || ROLLING_WINDOWS.length !== 34 || ROLLING_WINDOWS[0].startYear !== 1973 || ROLLING_WINDOWS.at(-1).endYear !== 2025) {
+        alert('ローリング実績データの年数または範囲が正しくありません。');
+        return;
+    }
+
+    updateFxProjection();
+    const weights = assets.map(asset => asset.val / initialTotal);
+    const householdPlan = getAnnualHouseholdPlan(currentAge, endAge, inflation);
+    simulationResults = ROLLING_WINDOWS.map(window => runRollingWindow(
+        window, assets, weights, householdPlan, currentAge, endAge, inflation, taxRate, annualFxRate
+    ));
+    settingReturnResult = runRollingWindow(
+        ROLLING_WINDOWS[0], assets, weights, householdPlan, currentAge, endAge, inflation, taxRate, annualFxRate, true
+    );
+    const successfulCount = simulationResults.filter(result => result.success).length;
+    document.getElementById('successRate').textContent = `成功率 ${((successfulCount / simulationResults.length) * 100).toFixed(1)}%（${successfulCount} / ${simulationResults.length}窓）`;
+
+    const bestAsset = Math.max(...simulationResults.map(result => result.finalAsset));
+    const best = simulationResults.filter(result => result.finalAsset === bestAsset).sort((a, b) => a.startYear - b.startYear)[0];
+    const worstAsset = Math.min(...simulationResults.map(result => result.finalAsset));
+    const worst = simulationResults.filter(result => result.finalAsset === worstAsset)
+        .sort((a, b) => (a.depletionAge ?? Infinity) - (b.depletionAge ?? Infinity) || a.startYear - b.startYear)[0];
+    const compareDepletedWindows = (a, b) =>
+        !a.success && !b.success
+            ? (a.depletionAge ?? Infinity) - (b.depletionAge ?? Infinity)
+            : 0;
+    const sortedByFinalAsset = [...simulationResults].sort((a, b) =>
+        a.finalAsset - b.finalAsset ||
+        (a.finalAsset === b.finalAsset ? compareDepletedWindows(a, b) : 0) ||
+        a.startYear - b.startYear
+    );
+    const middleFinalAsset = (sortedByFinalAsset[16].finalAsset + sortedByFinalAsset[17].finalAsset) / 2;
+    const medianCandidates = simulationResults
+        .filter(result => result.finalAsset === middleFinalAsset)
+        .sort((a, b) => a.startYear - b.startYear);
+    const median = medianCandidates.length > 0
+        ? medianCandidates[Math.floor((medianCandidates.length - 1) / 2)]
+        : [...simulationResults].sort((a, b) =>
+            Math.abs(a.finalAsset - middleFinalAsset) - Math.abs(b.finalAsset - middleFinalAsset) ||
+            (a.finalAsset === b.finalAsset ? compareDepletedWindows(a, b) : 0) ||
+            a.startYear - b.startYear
+        )[0];
+    const outcomes = { best, worst, median };
+    windowOutcomes = outcomes;
+
+    const select = document.getElementById('rollingWindowSelect');
+    select.innerHTML = [
+        ['best', `最良（${best.startYear}〜${best.endYear}年）`],
+        ['worst', `最悪（${worst.startYear}〜${worst.endYear}年）`],
+        ['median', `中央値（${median.startYear}〜${median.endYear}年）`]
+    ].map(([key, label]) => `<option value="${key}" selected disabled>${label}</option>`).join('') +
+    '<option value="settingReturn">設定リターン（全期間）</option>' +
+    simulationResults.map(result => {
+        const tags = [];
+        if (result.rollingNo === best.rollingNo) tags.push('最良');
+        if (result.rollingNo === worst.rollingNo) tags.push('最悪');
+        if (result.rollingNo === median.rollingNo) tags.push('中央値');
+        if (!result.success) tags.push('資産枯渇');
+        const suffix = tags.length ? `［${tags.join('・')}］` : '';
+        return `<option value="${result.rollingNo}">第${result.rollingNo}窓 ${result.startYear}〜${result.endYear}年 ${suffix}</option>`;
+    }).join('');
+    selectedRollingWindowNumbers = new Set();
+    activeRollingNo = null;
+    showingSettingReturn = false;
+    renderSelectedWindow(null, outcomes);
+}
+
+function renderAssetTrendCharts(outcomes, selectedResults, showSettingReturnOnly = false) {
+    const series = [
+        { result: outcomes.best, label: '最良', color: '#b0b0b0', borderDash: [6, 4] },
+        { result: outcomes.worst, label: '最悪', color: '#b0b0b0', borderDash: [6, 4] },
+        { result: outcomes.median, label: '中央値', color: '#b0b0b0', showPoints: false }
+    ];
+    const baselineNumbers = new Set(series.map(item => item.result.rollingNo));
+    selectedResults.forEach((result, index) => {
+        if (!baselineNumbers.has(result.rollingNo)) {
+            series.push({ result, label: `第${result.rollingNo}窓`, color: `hsl(${(index * 67 + 190) % 360} 62% 42%)`, showPoints: true });
+            baselineNumbers.add(result.rollingNo);
+        }
+    });
+    const renderChart = (canvasId, field, currentChart) => {
+        if (currentChart) currentChart.destroy();
+        return new Chart(document.getElementById(canvasId).getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: outcomes.best.rows.map(row => `${row.age}歳`),
+            datasets: [
+                ...series.map(({ result, label, color, showPoints = false, borderDash = [] }) => ({
+                label: result === settingReturnResult ? label : `${label}（${result.startYear}〜${result.endYear}年）`,
+                data: result.rows.map(row => Math.round(row[field])),
+                borderColor: color,
+                backgroundColor: `${color}22`,
+                borderDash,
+                pointRadius: showPoints ? 3 : 0,
+                pointBackgroundColor: showPoints ? '#fff' : color,
+                pointBorderColor: color,
+                pointBorderWidth: showPoints ? 1.5 : 0,
+                pointHoverRadius: showPoints ? 4 : 0,
+                fill: false,
+                tension: 0.1
+                })),
+                {
+                    label: '設定リターン（全期間）',
+                    data: settingReturnResult.rows.map(row => Math.round(row[field])),
+                    borderColor: '#c15b38',
+                    backgroundColor: '#c15b3822',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    pointHoverRadius: 0,
+                    fill: false,
+                    tension: 0.1
+                }
+            ]
+        },
+        options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        });
+    };
+    nominalAssetChart = renderChart('nominalAssetChart', 'totalAsset', nominalAssetChart);
+    realAssetChart = renderChart('realAssetChart', 'realAsset', realAssetChart);
+}
+
+function renderSelectedWindow(event = null, outcomes = null) {
+    if (event && !event.target) {
+        outcomes = event;
+        event = null;
+    }
+    if (simulationResults.length === 0) return;
+    if (outcomes) windowOutcomes = outcomes;
+    const select = document.getElementById('rollingWindowSelect');
+    const selectedResults = [...select.selectedOptions]
+        .map(option => Number(option.value))
+        .filter(Number.isFinite)
+        .map(rollingNo => simulationResults.find(item => item.rollingNo === rollingNo))
+        .filter(Boolean);
+    const settingReturnOption = [...select.options].find(option => option.value === 'settingReturn');
+    const currentSelection = new Set(selectedResults.map(item => item.rollingNo));
+    if (event) {
+        const newlySelected = [...currentSelection].filter(rollingNo => !selectedRollingWindowNumbers.has(rollingNo));
+        if (settingReturnOption?.selected && !showingSettingReturn) {
+            select.querySelectorAll('option:not([disabled])').forEach(option => {
+                if (option.value !== 'settingReturn') option.selected = false;
+            });
+            showingSettingReturn = true;
+            activeRollingNo = null;
+        } else if (newlySelected.length > 0) {
+            if (settingReturnOption) settingReturnOption.selected = false;
+            showingSettingReturn = false;
+            activeRollingNo = newlySelected[newlySelected.length - 1];
+        } else if (!settingReturnOption?.selected) {
+            showingSettingReturn = false;
+            if (!currentSelection.has(activeRollingNo)) {
+            activeRollingNo = selectedResults[0]?.rollingNo ?? null;
+            }
+        }
+        selectedRollingWindowNumbers = currentSelection;
+    }
+    const activeOutcomes = windowOutcomes;
+    const fallbackResult = activeOutcomes?.worst;
+    const result = showingSettingReturn
+        ? settingReturnResult
+        : simulationResults.find(item => item.rollingNo === activeRollingNo) || fallbackResult;
+    if (!result) return;
+    renderAssetTrendCharts(activeOutcomes, selectedResults, showingSettingReturn);
+    const hasWife = document.getElementById('hasWife').checked;
+    const childAges = [...document.querySelectorAll('.child-age')].map(field => Number(field.value) || 0);
+    let headers = '<tr><th rowspan="2">本人</th>';
+    if (hasWife) {
+        headers += '<th rowspan="2">配偶者</th>';
+    }
+    for (let i = 0; i < childAges.length; i++) {
+        headers += `<th rowspan="2">子供${i + 1}</th>`;
+    }
+    headers += '<th rowspan="2">トータル資産</th>';
+    headers += '<th rowspan="2">実質資産</th>';
+    headers += '<th rowspan="2">年間収支</th>';
+    headers += '<th rowspan="2">資産全体の平均リターン</th>';
+    headers += '<th rowspan="2">運用リターン</th>';
+    headers += '<th colspan="3" style="text-align:center;">収入</th>';
+    headers += '<th colspan="3" style="text-align:center;">支出</th>';
+    headers += '<th rowspan="2">インフレ率（現在比）</th>';
+    headers += '</tr>';
+
+    // 2行目ヘッダー（小カテゴリ）
+    let subHeaderHtml = '<tr>';
+    subHeaderHtml += '<th>計</th><th>定期収入</th><th>臨時収入</th>';
+    subHeaderHtml += '<th>計</th><th>定期支出</th><th>臨時支出</th>';
+    subHeaderHtml += '</tr>';
+
+    document.getElementById('resultTableHead').innerHTML = headers + subHeaderHtml;
+    document.getElementById('resultTableBody').innerHTML = result.rows.map(row => {
+        let cells = `<td>${row.age}歳</td>`;
+        if (hasWife) cells += `<td>${Number(document.getElementById('wifeAge').value) + row.age - Number(document.getElementById('currentAge').value)}歳</td>`;
+        childAges.forEach(age => { cells += `<td>${age + row.age - Number(document.getElementById('currentAge').value)}歳</td>`; });
+        const values = [row.totalAsset, row.realAsset, row.annualCashFlow, row.averageReturnRate, row.investmentReturn, row.income, row.regularIncome, row.extraIncome, row.expense, row.regularExpense, row.extraExpense];
+        values.forEach((value, index) => {
+            const isReturnColumn = index === 3 || index === 4;
+            const color = isReturnColumn && value < 0 ? '#b43b35' : '';
+            const isSeverelyNegativeAverageReturn = index === 3 && value < -0.2;
+            const formattedValue = index === 3 ? `${(value * 100).toFixed(1)}%` : Math.round(value).toLocaleString();
+            const styles = [
+                color ? `color:${color}` : '',
+                isSeverelyNegativeAverageReturn ? 'font-weight:bold' : ''
+            ].filter(Boolean).join(';');
+            cells += `<td${styles ? ` style="${styles}"` : ''}>${formattedValue}</td>`;
+        });
+        cells += `<td>${row.inflationFactor.toFixed(3)}</td>`;
+        return `<tr>${cells}</tr>`;
+    }).join('');
+
+    if (cashFlowChart) cashFlowChart.destroy();
+    cashFlowChart = new Chart(document.getElementById('cashFlowChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: result.rows.map((row, index) => index === 0 ? `${row.age}歳開始` : `${row.age - 1}〜${row.age}歳`),
+            datasets: [
+                { label: '年間収入合計（万円）', data: result.rows.map(row => Math.round(row.income)), backgroundColor: 'rgba(46, 204, 113, 0.65)',
+                    borderColor: '#27ae60',
+                    borderWidth: 1
+                },
+                { label: '年間支出合計（万円）', data: result.rows.map(row => Math.round(row.expense)), backgroundColor: 'rgba(231, 76, 60, 0.65)',
+                    borderColor: '#c0392b',
+                    borderWidth: 1
+                },
+                { type: 'line', label: '年間収支＋運用リターン（万円）', data: result.rows.map(row => Math.round(row.annualCashFlow)), borderColor: '#34495e',
+                    backgroundColor: '#34495e',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    tension: 0.1,
+                    fill: false
+                }
+            ]
+        },
+        options: { responsive: true, scales: { y: { beginAtZero: true } } }
+    });
+}
+</script>
+</body>
+</html>
